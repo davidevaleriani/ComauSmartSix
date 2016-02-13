@@ -1,0 +1,273 @@
+-- Developed by Davide Valeriani
+-- www.davidevaleriani.it
+PROGRAM ServerComau PROG_ARM = 1
+CONST
+  ki_dv_tcp_connection = 29
+  ki_dv_tcp_disconnection = 31
+  default_port = 12345
+TYPE myNode = NODEDEF
+    $MOVE_TYPE
+    $MAIN_POS
+  ENDNODEDEF
+VAR
+  myPath : PATH OF myNode
+  vi_netlun : INTEGER
+  vi_local_port : INTEGER
+  x1, x2 : REAL
+  y1, y2 : REAL
+  z1, z2 : REAL
+  resp, nodes : INTEGER
+  c : INTEGER
+  joints : ARRAY[6] OF REAL
+  j1 : JOINTPOS
+  p1 : POSITION
+  vel : INTEGER
+  s : STRING[80]
+BEGIN
+  $CNFG_CARE := FALSE
+  SYS_CALL('pg', 'CheckPosition')
+  SYS_CALL('pg', 'CheckError')
+  vi_netlun := 22
+  $SPD_OPT := SPD_LIN
+  $LIN_SPD := 1.5
+  vel := 70
+  $TOOL := POS(0, 0, 240, 0, 0, 0, '')
+  WRITE LUN_CRT ($TOOL)
+  -- Open the TCP socket
+  OPEN FILE vi_netlun ('NETT:', 'rw')
+  -- Init local port
+  vi_local_port := default_port
+  -- Wait for client connection
+  WRITE LUN_CRT ('-----------------------------------------------------------------', NL)
+  WRITE LUN_CRT ('Server waiting for connections on port ', vi_local_port, NL)
+  WRITE LUN_CRT ('-----------------------------------------------------------------', NL)
+connection::
+  -- Start the connection with the server 
+  DV4_CNTRL(ki_dv_tcp_connection, (vi_netlun), (vi_local_port))
+menu:: 
+  -- Print the menu with the various functions
+  WRITE LUN_CRT ('-------------------------MENU----------------------------', NL)
+  WRITE LUN_CRT ('1) Move to position $CAL_SYS', NL)
+  WRITE LUN_CRT ('2) Linear motion to a point', NL)
+  WRITE LUN_CRT ('3) Motion along a trajectory', NL)
+  WRITE LUN_CRT ('4) Relative motion from current position', NL)
+  WRITE LUN_CRT ('5) Motion from current position', NL)
+  WRITE LUN_CRT ('6) Move all joints', NL)
+  WRITE LUN_CRT ('7) Set the velocity', NL)
+  WRITE LUN_CRT ('8) Read current position in the operative space', NL)
+  WRITE LUN_CRT ('9) Read current position in the joints space', NL)
+  WRITE LUN_CRT ('10) Close the connection', NL)
+  WRITE LUN_CRT ('99) Exit the server', NL)
+  WRITE LUN_CRT ('---------------------------------------------------------', NL)
+read::  
+  IF $DV_STS = 0 THEN   -- for every connection
+    -- Scrivo sul monitor del server
+    WRITE LUN_CRT ('Client connected', NL)
+    -- Read the selected function
+    READ vi_netlun (resp)
+    WRITE vi_netlun ('OK')
+    WRITE LUN_CRT ('Read', resp, NL)
+    SELECT resp OF
+      CASE (1):   -- Move the robot to the calibration position
+        WRITE LUN_CRT ('The robot is moving, please wait... ')
+        MOVE TO $CAL_SYS
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot reached the position')
+      CASE (2):   -- Linear motion to a point
+        -- Read the six coordinates
+        READ vi_netlun (x1)
+        WRITE LUN_CRT ('Read: x = ', x1, NL)
+        WRITE vi_netlun ('OK ')
+        READ vi_netlun (y1)
+        WRITE LUN_CRT ('Read: y = ', y1, NL)
+        WRITE vi_netlun ('OK ')
+        READ vi_netlun (z1)
+        WRITE LUN_CRT ('Read: z = ', z1, NL)
+        WRITE vi_netlun ('OK ')
+        READ vi_netlun (x2)
+        WRITE LUN_CRT ('Read: a = ', x2, NL)
+        WRITE vi_netlun ('OK ')
+        READ vi_netlun (y2)
+        WRITE LUN_CRT ('Read: b = ', y2, NL)
+        WRITE vi_netlun ('OK ')
+        READ vi_netlun (z2)
+        WRITE LUN_CRT ('Read: c = ', z2, NL)
+        WRITE vi_netlun ('OK ')
+        WRITE LUN_CRT ('The robot is moving, please wait... ')
+        MOVEFLY LINEAR TO POS(x1, y1, z1, x2, y2, z2, '') ADVANCE WITH $LIN_SPD = 1.5
+        WRITE vi_netlun ('OK ')
+      CASE (3):
+        -- Motion along a trajectory
+        -- Read the set of points composing the trajectory
+        READ vi_netlun (nodes)
+        WRITE LUN_CRT ('Read number of nodes: ', nodes, NL)
+        -- Add "nodes" nodes to the path
+        NODE_APP(myPath, nodes)
+        -- Init the counter of the current node
+        c := 1
+        REPEAT
+          -- Read the six coordinates of each node
+          WRITE LUN_CRT ('Node index: ', c, NL)
+          READ vi_netlun (x1)
+          WRITE vi_netlun ('OK')
+          WRITE LUN_CRT ('Read: x1 = ', x1, NL)
+          READ vi_netlun (y1)
+          WRITE vi_netlun ('OK')
+          WRITE LUN_CRT ('Read: y1 = ', y1, NL)
+          READ vi_netlun (z1)
+          WRITE vi_netlun ('OK')
+          WRITE LUN_CRT ('Read: z1 = ', z1, NL)
+          READ vi_netlun (x2)
+          WRITE vi_netlun ('OK')
+          WRITE LUN_CRT ('Read: a = ', x2, NL)
+          READ vi_netlun (y2)
+          WRITE vi_netlun ('OK')
+          WRITE LUN_CRT ('Read: b = ', y2, NL)
+          READ vi_netlun (z2)
+          WRITE vi_netlun ('OK')
+          WRITE LUN_CRT ('Read: c = ', z2, NL)
+          -- Save the node
+          myPath.NODE[c].$MOVE_TYPE := LINEAR
+          myPath.NODE[c].$MAIN_POS := POS(x1, y1, z1, x2, y2, z2)
+          -- Increment the counter
+          c := c + 1
+        UNTIL  c > nodes
+        WRITE LUN_CRT ('The robot is moving, please wait... ')
+        REPEAT
+          MOVEFLY ALONG myPath[1..nodes] ADVANCE 
+          c := c - 1
+        UNTIL  c > 1
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot reached the position')
+      CASE (4):
+        -- Relative motion from current position
+        -- Read the values representing how much should the robot move along each axis
+        READ vi_netlun (x1)
+        WRITE LUN_CRT ('Read: x = ', x1, NL)
+        WRITE vi_netlun ('OK')
+        READ vi_netlun (y1)
+        WRITE LUN_CRT ('Read: y = ', y1, NL)
+        WRITE vi_netlun ('OK')
+        READ vi_netlun (z1)
+        WRITE LUN_CRT ('Read: z = ', z1, NL)
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot is moving, please wait... ')
+        MOVE LINEAR RELATIVE VEC(x1, y1, z1) IN TOOL
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot reached the position')
+      CASE (5):
+        -- Motion from current position
+        -- Read the value of the motion
+        READ vi_netlun (x1)
+        WRITE LUN_CRT ('Read: x = ', x1, NL)
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot is moving, please wait... ')
+        MOVE LINEAR AWAY x1
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot reached the position')
+      CASE (6):
+        -- Move all joints
+        -- Read the value of the motion of each joint
+        READ vi_netlun (joints[1])
+        WRITE LUN_CRT ('Read: g1 = ', joints[1], NL)
+        WRITE vi_netlun ('OK')
+        READ vi_netlun (joints[2])
+        WRITE LUN_CRT ('Read: g2 = ', joints[2], NL)
+        WRITE vi_netlun ('OK')
+        READ vi_netlun (joints[3])
+        WRITE LUN_CRT ('Read: g3 = ', joints[3], NL)
+        WRITE vi_netlun ('OK')
+        READ vi_netlun (joints[4])
+        WRITE LUN_CRT ('Read: g4 = ', joints[4], NL)
+        WRITE vi_netlun ('OK')
+        READ vi_netlun (joints[5])
+        WRITE LUN_CRT ('Read: g5 = ', joints[5], NL)
+        WRITE vi_netlun ('OK')
+        READ vi_netlun (joints[6])
+        WRITE LUN_CRT ('Read: g6 = ', joints[6], NL)
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot is moving, please wait... ')
+        MOVE TO {joints[1], joints[2], joints[3], joints[4], joints[5], joints[6]}
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('The robot reached the position')
+      CASE (7):
+        -- Set the velocity
+        -- Read the new velocity value
+        READ vi_netlun (vel)
+        $PROG_SPD_OVR := vel
+        $ARM_SPD_OVR := vel
+        WRITE vi_netlun ('OK')
+        WRITE LUN_CRT ('Velocity set to ', vel, NL)
+      CASE (8):
+        -- Read current position in the operative space
+        p1 := ARM_POS
+        READ vi_netlun (s)
+        WRITE vi_netlun (p1.X, NL)
+        WRITE LUN_CRT ('Sent: ', p1.X, NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (p1.Y, NL)
+        WRITE LUN_CRT ('Sent: ', p1.Y, NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (p1.Z, NL)
+        WRITE LUN_CRT ('Sent: ', p1.Z, NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (p1.A, NL)
+        WRITE LUN_CRT ('Sent: ', p1.A, NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (p1.E, NL)
+        WRITE LUN_CRT ('Sent: ', p1.E, NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (p1.R, NL)
+        WRITE LUN_CRT ('Sent: ', p1.R, NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+      CASE (9):
+        -- Read current position in the joints space
+        j1 := ARM_JNTP
+        READ vi_netlun (s)
+        WRITE vi_netlun (j1[1], NL)
+        WRITE LUN_CRT ('Sent: ', j1[1], NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (j1[2], NL)
+        WRITE LUN_CRT ('Sent: ', j1[2], NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (j1[3], NL)
+        WRITE LUN_CRT ('Sent: ', j1[3], NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (j1[4], NL)
+        WRITE LUN_CRT ('Sent: ', j1[4], NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (j1[5], NL)
+        WRITE LUN_CRT ('Sent: ', j1[5], NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+        WRITE vi_netlun (j1[6], NL)
+        WRITE LUN_CRT ('Sent: ', j1[6], NL)
+        READ vi_netlun (s)
+        WRITE LUN_CRT ('Read', s, NL)
+      CASE (10):
+        -- Accept a new connection
+        WRITE vi_netlun ('OK')
+        GOTO connection
+      CASE (99):
+        -- Uscita		
+        GOTO fine
+    ENDSELECT
+    GOTO read
+  ENDIF
+fine::  
+  WRITE vi_netlun ('END')
+  WRITE LUN_CRT ('Exit')
+  --DV4_CNTRL(ki_dv_tcp_disconnection, (vi_netlun))
+  CLOSE FILE vi_netlun
+  DEACTIVATE CheckPosition, CheckError
+END ServerComau

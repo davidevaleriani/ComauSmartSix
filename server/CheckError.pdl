@@ -1,0 +1,15 @@
+PROGRAM CheckError NOHOLD
+VAR
+  j1 : JOINTPOS
+  p1 : POSITION
+BEGIN
+CYCLE
+  j1 := ARM_JNTP(1)
+  p1 := ARM_POS(1)
+  IF (j1[5] > 100) OR (j1[5] < -100) THEN
+    ERR_POST(44005, 'Joint 5 position not allowed', 8)
+  ENDIF
+  IF p1.Z < 412 THEN
+    ERR_POST(44005, 'Dangerous position', 8)
+  ENDIF
+END CheckError
