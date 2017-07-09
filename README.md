@@ -11,7 +11,7 @@ In your C++ program, you just need to import *RobotComau.h*, create an object of
 An example of a program using the library is provided (file *main.cpp*).
 
 ## Documentation
-Unfortunately, there is no official documentation of this library. However, if you go through the code, you will find some useful comments that explain how the library works. Moreover, if you are lucky enough to know Italian, a detailed explanation of the library is available in my thesis [here](http://www.daddy88.com/download.php?file=TesiComau.pdf).
+Unfortunately, there is no official documentation of this library. However, if you go through the code, you will find some useful comments that explain how the library works. Moreover, if you are lucky enough to know Italian, a detailed explanation of the library is available in my thesis [here](http://www.davidevaleriani.it/pub/TesiTriennale.pdf).
 
 ## Video
 Three videos showing different applications of the library are available on my YouTube channel:
